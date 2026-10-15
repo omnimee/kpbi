@@ -260,6 +260,7 @@ details.card>summary{cursor:pointer;font-weight:600;min-height:28px}
   <section id="v-anggota" hidden></section>
   <section id="v-absensi" hidden></section>
   <section id="v-jadwal" hidden></section>
+  <section id="v-iuran" hidden></section>
   <section id="v-cetak" hidden></section>
   <section id="v-pengaturan" hidden></section>
 </main>
@@ -308,11 +309,13 @@ const ICONS={
 
 
 /* ---------- state & server ---------- */
-const cfg={team:'KPBI Barongsay',alamat:'',logo:''};
+const cfg={team:'KPBI Barongsay',alamat:'',logo:'',iuran:0};
+const rp=n=>'Rp'+String(Math.round(Number(n)||0)).replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+const blnLabel=b=>/^\d{4}-\d{2}$/.test(b||'')?BLN[+b.slice(5,7)-1]+' '+b.slice(0,4):'';
 function applyBrand(c){
   if(!c)return;
   if(c.team)cfg.team=c.team;
-  cfg.alamat=c.alamat||'';cfg.logo=c.logo||'';
+  cfg.alamat=c.alamat||'';cfg.logo=c.logo||'';cfg.iuran=Number(c.iuran)||0;
   $('#brandName').textContent=cfg.team;document.title=cfg.team;
   const sub=$('#brandSub');sub.textContent=cfg.alamat;sub.hidden=!cfg.alamat;
   const mk=$('#brandMark');
@@ -386,7 +389,7 @@ const TABS=[
   {id:'daftar',label:'Daftar',show:()=>true},{id:'cek',label:'Cek status',show:()=>true},
   {id:'masuk',label:'Pengurus',show:()=>!isAdmin},
   {id:'setuju',label:'Persetujuan',show:()=>isAdmin},{id:'anggota',label:'Anggota',show:()=>isAdmin},
-  {id:'absensi',label:'Absensi',show:()=>isAdmin},{id:'jadwal',label:'Jadwal',show:()=>isAdmin},{id:'cetak',label:'Cetak',show:()=>isAdmin},{id:'pengaturan',label:'Pengaturan',show:()=>isAdmin}
+  {id:'absensi',label:'Absensi',show:()=>isAdmin},{id:'jadwal',label:'Jadwal',show:()=>isAdmin},{id:'iuran',label:'Iuran',show:()=>isAdmin},{id:'cetak',label:'Cetak',show:()=>isAdmin},{id:'pengaturan',label:'Pengaturan',show:()=>isAdmin}
 ];
 function renderTabs(){
   const n=pending().length;
@@ -405,6 +408,7 @@ function renderView(){
   else if(tab==='anggota')renderAnggota();
   else if(tab==='absensi'){if(A.cur&&$('#sList'))paintSesi();else renderAbsensi();}
   else if(tab==='jadwal'){if(J.cur&&$('#jPeserta'))paintJadwal();else renderJadwal();}
+  else if(tab==='iuran')renderIuran();
   else if(tab==='cetak')renderCetak();
   else if(tab==='pengaturan')renderPengaturan();
 }
@@ -525,7 +529,8 @@ function stopScanner(){
   try{scanner.stream.getTracks().forEach(t=>t.stop());}catch(e){}
   scanner.el.remove();document.body.style.overflow='';scanner=null;
 }
-async function openScanner(){
+async function openScanner(opts){
+  opts=opts&&typeof opts==='object'&&!opts.target?opts:{};
   if(scanner)return;
   if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){toast('Kamera tidak tersedia di browser ini. Pakai tombol Foto QR.');return;}
   let stream;
@@ -536,8 +541,9 @@ async function openScanner(){
   const el=h('div',{id:'scanner',role:'dialog','aria-modal':'true','aria-label':'Scan QR',style:'position:fixed;inset:0;z-index:70;background:rgba(20,6,8,.92);display:flex;flex-direction:column;gap:12px;padding:16px;justify-content:center'},
     h('div',{style:'max-width:520px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:12px'},
       video,
-      h('p',{style:'color:#fff;text-align:center;margin:0'},'Arahkan kamera ke QR di ID card'),
-      h('button',{class:'btn ghost',type:'button',onclick:stopScanner},'Batal')));
+      h('p',{style:'color:#fff;text-align:center;margin:0'},opts.hint||'Arahkan kamera ke QR di ID card'),
+      h('p',{id:'scanMsg','aria-live':'polite',style:'color:#F0D084;text-align:center;margin:0;min-height:24px;font-weight:600'}),
+      h('button',{class:'btn ghost',type:'button',onclick:stopScanner},opts.continuous?'Selesai':'Batal')));
   document.body.append(el);document.body.style.overflow='hidden';
   scanner={el,stream,on:true,t:0};
   const S=scanner;
@@ -555,12 +561,21 @@ async function openScanner(){
       }
     }catch(e){}
     if(!S.on)return;
-    if(code){stopScanner();$('#idInput').value=code;showVerdict(code);return;}
-    S.t=setTimeout(loop,150);
+    if(code){
+      if(opts.continuous&&opts.onCode){
+        if(code!==S.last||Date.now()-S.lastT>3500){
+          S.last=code;S.lastT=Date.now();
+          let msg='';try{msg=await opts.onCode(code);}catch(e){msg='Gagal: '+errMsg(e);}
+          const m=$('#scanMsg');if(m&&S.on)m.textContent=msg||'';
+        }
+      }else if(opts.onCode){stopScanner();await opts.onCode(code);return;}
+      else{stopScanner();$('#idInput').value=code;showVerdict(code);return;}
+    }
+    if(S.on)S.t=setTimeout(loop,150);
   };
   loop();
 }
-function initCekScan(){const b=$('#qrCam');if(b)b.addEventListener('click',openScanner);}
+function initCekScan(){const b=$('#qrCam');if(b)b.addEventListener('click',()=>openScanner());}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')stopScanner();});
 async function showVerdict(code){
   const box=$('#verdict');
@@ -643,6 +658,7 @@ function logout(){
   A.cur=null;A.sesi=[];A.hadir={};A.rekap=null;A.bulan=null;A.pdf=null;A.res=null;A.view='sesi';
   J.cur=null;J.list=[];J.peserta={};J.edit=null;
   delete $('#v-pengaturan').dataset.built;
+  I.bulan='';I.bayar={};I.built=false;
   Object.keys(PH).forEach(k=>delete PH[k]);
   closeSheet();
   go('daftar');
@@ -831,7 +847,9 @@ async function openDetail(id){
   const sheet=$('#sheet');sheet.hidden=false;document.body.style.overflow='hidden';
   sheet.replaceChildren(h('div',{class:'panel'},h('p',{class:'sm'},'Memuat…')));
   let hist=[];
+  let iur=[];
   try{hist=await adm('getHistory',m._id);}catch(e){}
+  try{iur=await adm('riwayatIuran',m._id);}catch(e){}
   const canvas=await drawCard(m);
   const png=canvas.toDataURL('image/png');
   let sel=m.status;
@@ -845,6 +863,16 @@ async function openDetail(id){
       m.status=sel;toast('Status diperbarui');refreshAll();openDetail(m._id);
     }catch(e){toast(errMsg(e));saveBtn.disabled=false;}
   }},'Simpan status');
+  const fotoIn=h('input',{class:'sr',type:'file',accept:'image/*',id:'fotoFile',onchange:async e=>{
+    const f=e.target.files&&e.target.files[0];if(!f)return;
+    try{
+      toast('Mengunggah foto…');
+      const foto=await selfieFrom(f);
+      const r=await adm('ubahFoto',m._id,foto);
+      m.fotoKey=r.fotoKey;PH[r.fotoKey]=foto;applyPhotos();refreshAll();toast('Foto diperbarui');openDetail(m._id);
+    }catch(x){toast(errMsg(x));}
+    e.target.value='';
+  }});
   const qrBtn=m.kode&&window.qrcode?h('button',{class:'btn ghost',type:'button',id:'qrDl',onclick:async()=>{
     const a=h('a',{href:await qrPngUrl(m),download:'QR-'+m._id+'.png'});document.body.append(a);a.click();a.remove();
   }},'Unduh QR code (PNG)'):null;
@@ -861,10 +889,11 @@ async function openDetail(id){
         h('div',{style:'margin-top:8px'},pill(m.status))),
       h('button',{class:'btn ghost sm',type:'button',onclick:closeSheet},'Tutup')),
     h('img',{class:'idcard',src:png,alt:'ID card '+m.name}),
-    h('div',{class:'row',style:'justify-content:center'},pngBtn,qrBtn),
+    h('div',{class:'row',style:'justify-content:center'},pngBtn,qrBtn,h('label',{class:'btn ghost',for:'fotoFile'},'Ganti foto'),fotoIn),
     h('p',{class:'help',style:'text-align:center'},'Jika unduhan tidak jalan, tekan lama gambar kartu lalu pilih simpan gambar.'),
     h('div',null,h('h2',null,'Ubah status'),h('div',{class:'segs'},segs),h('div',{style:'margin-top:10px;display:flex;flex-direction:column;gap:10px'},reason,saveBtn)),
     h('div',null,h('h2',null,'Ubah data anggota'),editForm(m)),
+    h('div',null,h('h2',null,'Iuran'),iur.length?h('div',{class:'hist'},iur.map(x=>h('div',null,h('span',{class:'sm mono'},blnLabel(x.bulan)),h('span',null,rp(x.jumlah))))):h('p',{class:'sm'},'Belum ada pembayaran tercatat.')),
     h('div',null,h('h2',null,'Riwayat status'),h('div',{class:'hist'},hist.map(x=>h('div',null,h('span',{class:'sm mono'},fmtDate(x.d)),STATUS[x.s]?pill(x.s):null,h('span',null,x.r||'')))))));
   sheet.scrollTop=0;
 }
@@ -875,6 +904,81 @@ function printList(){
   const l=S.members.filter(m=>P.st[m.status]&&(!P.role||m.role===P.role)&&(!P.jab||jabOf(m)===P.jab));
   return l.sort((a,b)=>P.sort==='nama'?a.name.localeCompare(b.name,'id'):a._id.localeCompare(b._id));
 }
+/* ---------- iuran ---------- */
+const nowBulan=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');};
+const I={bulan:'',nominal:0,bayar:{},q:'',showOff:false,built:false,load:false};
+async function loadIuran(){
+  if(!I.bulan)I.bulan=nowBulan();
+  I.load=true;paintIuran();
+  try{
+    const d=await adm('iuranData',I.bulan);
+    I.nominal=d.nominal;I.bayar={};d.bayar.forEach(b=>{I.bayar[b.id]=b;});
+  }catch(e){toast(errMsg(e));}
+  I.load=false;paintIuran();
+}
+function renderIuran(){
+  const root=$('#v-iuran');
+  if(I.built&&$('#iList')){paintIuran();return;}
+  if(!I.bulan)I.bulan=nowBulan();
+  root.replaceChildren(
+    h('h1',null,'Iuran anggota'),
+    h('p',{class:'lead',style:'margin-bottom:12px'},'Catat pembayaran iuran per bulan. Nominal iuran diatur di tab Pengaturan.'),
+    h('div',{class:'bar',style:'margin-bottom:10px'},
+      h('input',{class:'inp',type:'month',id:'iBulan',value:I.bulan,'aria-label':'Bulan',style:'flex:0 1 190px',onchange:e=>{if(e.target.value){I.bulan=e.target.value;loadIuran();}}}),
+      h('button',{class:'btn ghost sm',type:'button',id:'iRefresh',onclick:()=>loadIuran()},'Muat ulang'),
+      h('button',{class:'btn ghost sm',type:'button',id:'iPdf',onclick:async e=>{
+        const b=e.currentTarget;b.disabled=true;
+        try{const r=await adm('exportIuranPdf',I.bulan);if(r.base64)downloadB64(r.base64,r.name,'application/pdf');else toast('PDF terlalu besar untuk diunduh langsung.');}
+        catch(x){toast(errMsg(x));}b.disabled=false;}},'Cetak PDF')),
+    h('div',{class:'card',id:'iSum',style:'margin-bottom:12px'}),
+    h('div',{class:'bar',style:'margin:0 0 10px'},
+      h('input',{class:'inp',type:'search',id:'iQ',placeholder:'Cari nama atau ID','aria-label':'Cari anggota',oninput:e=>{I.q=e.target.value;paintIuran();}}),
+      h('button',{class:'chip',type:'button',id:'iOff','aria-pressed':'false',onclick:()=>{I.showOff=!I.showOff;paintIuran();}},'Tampilkan non-aktif')),
+    h('div',{class:'list',id:'iList'}));
+  I.built=true;
+  loadIuran();
+}
+function paintIuran(){
+  if(!$('#iList'))return;
+  const aktif=S.members.filter(m=>m.status==='aktif');
+  const lunas=aktif.filter(m=>I.bayar[m._id]).length;
+  const total=Object.values(I.bayar).reduce((a,b)=>a+(Number(b.jumlah)||0),0);
+  $('#iSum').replaceChildren(
+    h('b',{style:'font-size:20px'},blnLabel(I.bulan)),
+    h('p',{class:'mono',style:'margin:6px 0 0;font-weight:600'},'Terkumpul '+rp(total)),
+    h('p',{class:'sm',style:'margin:2px 0 0'},lunas+' dari '+aktif.length+' anggota aktif sudah bayar'+(I.nominal?' · iuran '+rp(I.nominal)+'/bulan':' · nominal iuran belum diatur')));
+  $('#iOff').setAttribute('aria-pressed',String(I.showOff));
+  const rows=S.members.filter(m=>(m.status==='aktif'||I.showOff||I.bayar[m._id])&&matches(m,I.q)).sort((a,b)=>a.name.localeCompare(b.name,'id'));
+  $('#iList').replaceChildren(...(I.load&&!rows.length?[h('p',{class:'sm'},'Memuat…')]:rows.length?rows.map(m=>{
+    const b=I.bayar[m._id];
+    return h('button',{class:'item'+(b?' on':''),type:'button',onclick:()=>openIuranSheet(m)},
+      h('span',{class:'box',html:b?CHECK:''}),
+      h('span',{class:'ri-main'},h('b',null,m.name),h('span',{class:'mono sm'},m._id+' · '+(b?'Lunas '+rp(b.jumlah)+(b.tanggal?' · '+fmtDate(b.tanggal):''):'Belum bayar'))),
+      m.status!=='aktif'?pill(m.status):null);
+  }):[h('div',{class:'empty'},h('b',null,'Tidak ada anggota yang cocok'),h('span',null,'Ubah kata kunci atau nyalakan tampilan non-aktif.'))]));
+}
+function openIuranSheet(m){
+  const b=I.bayar[m._id];
+  const sheet=$('#sheet');sheet.hidden=false;document.body.style.overflow='hidden';
+  const jml=h('input',{class:'inp',id:'iJumlah',inputmode:'numeric',value:String(b?b.jumlah:(I.nominal||'')),placeholder:'Jumlah (Rp)','aria-label':'Jumlah'});
+  const cat=h('input',{class:'inp',id:'iCatatan',value:b?b.catatan||'':'',maxlength:'80',placeholder:'Catatan (opsional), mis. tunai / transfer','aria-label':'Catatan'});
+  const save=h('button',{class:'btn',type:'button',id:'iSave',onclick:async()=>{
+    save.disabled=true;
+    try{const r=await adm('catatIuran',I.bulan,m._id,jml.value,cat.value.trim());I.bayar[m._id]=r;closeSheet();paintIuran();toast('Iuran tercatat');}
+    catch(e){toast(errMsg(e));save.disabled=false;}
+  }},b?'Perbarui':'Catat bayar');
+  const del=b?h('button',{class:'btn out-bad',type:'button',id:'iDel',onclick:async()=>{
+    del.disabled=true;
+    try{await adm('hapusIuran',I.bulan,m._id);delete I.bayar[m._id];closeSheet();paintIuran();toast('Pembayaran dibatalkan');}
+    catch(e){toast(errMsg(e));del.disabled=false;}
+  }},'Batalkan pembayaran'):null;
+  sheet.replaceChildren(h('div',{class:'panel',role:'dialog','aria-modal':'true','aria-label':'Catat iuran'},
+    h('div',{class:'phead'},h('div',{style:'min-width:0'},h('h1',{style:'font-size:24px;overflow-wrap:anywhere'},m.name),h('div',{class:'meta'},h('span',{class:'mono'},m._id),h('span',null,'Iuran '+blnLabel(I.bulan)))),
+      h('button',{class:'btn ghost sm',type:'button',onclick:closeSheet},'Tutup')),
+    h('label',{class:'sm'},'Jumlah (Rp)',jml),h('label',{class:'sm'},'Catatan',cat),save,del));
+  sheet.scrollTop=0;
+}
+
 /* ---------- pengaturan ---------- */
 async function logoFrom(file){
   const img=await loadImg(await readFile(file));
@@ -894,6 +998,7 @@ function renderPengaturan(){
   PG.logo=cfg.logo||'';
   const fN=h('input',{class:'inp',id:'pgNama',value:cfg.team,maxlength:'60','aria-label':'Nama tim'});
   const fA=h('input',{class:'inp',id:'pgAlamat',value:cfg.alamat,maxlength:'120',placeholder:'Contoh: Jl. Merdeka No. 10, Medan','aria-label':'Alamat'});
+  const fI=h('input',{class:'inp',id:'pgIuran',inputmode:'numeric',value:cfg.iuran?String(cfg.iuran):'',placeholder:'Contoh: 50000','aria-label':'Iuran per bulan'});
   const prev=h('div',{class:'logo-prev',id:'pgPrev'});
   const paint=()=>{prev.replaceChildren(PG.logo?h('img',{src:PG.logo,alt:'Logo'}):h('span',{class:'sm',style:'color:#fff'},'Belum ada'));};
   paint();
@@ -905,7 +1010,7 @@ function renderPengaturan(){
   const save=h('button',{class:'btn',type:'button',id:'pgSave',onclick:async()=>{
     save.disabled=true;
     try{
-      const c=await adm('simpanPengaturan',{nama:fN.value.trim(),alamat:fA.value.trim(),logo:PG.logo||''});
+      const c=await adm('simpanPengaturan',{nama:fN.value.trim(),alamat:fA.value.trim(),logo:PG.logo||'',iuran:fI.value.trim()});
       applyBrand(c);
   if(c&&c.jabatan&&c.jabatan.length){JABATAN.splice(0,JABATAN.length,...c.jabatan);fillRoles();}toast('Pengaturan disimpan');
     }catch(x){toast(errMsg(x));}
@@ -917,6 +1022,7 @@ function renderPengaturan(){
     h('div',{class:'card',style:'display:flex;flex-direction:column;gap:14px;max-width:520px'},
       h('label',{class:'field'},h('span',null,'Nama tim'),fN),
       h('label',{class:'field'},h('span',null,'Alamat (tampil di bawah nama)'),fA),
+      h('label',{class:'field'},h('span',null,'Iuran per bulan (Rp)'),fI),
       h('div',null,h('h2',null,'Logo'),
         h('div',{style:'display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px'},prev,
           h('div',{style:'display:flex;flex-direction:column;gap:8px'},
@@ -1053,7 +1159,13 @@ function renderSesi(){
           try{const t=await decodeQR(f);if(!t)toast('QR tidak terbaca. Foto lagi lebih dekat dan terang.');else await submitKode(t,false);}
           catch(x){toast('Foto tidak bisa dibaca.');}
           e.target.value='';}}),
-        h('label',{class:'btn ghost sm','for':'sQr'},'Foto QR dari ID card')),
+        h('div',{class:'row'},
+          h('button',{class:'btn sm',type:'button',id:'sCam',disabled:!open,onclick:()=>openScanner({continuous:true,hint:'Arahkan ke QR anggota, satu per satu',onCode:async code=>{
+            await submitKode(code,false);const r=A.res;if(!r)return '';
+            if(r.t==='none')return 'Kode tidak dikenal';
+            if(r.t==='warn')return r.r.nama+' non-aktif, belum dicatat';
+            return (r.t==='dup'?r.r.nama+' sudah tercatat':r.r.nama+' hadir ✓');}})},'Scan dengan kamera'),
+          h('label',{class:'btn ghost sm','for':'sQr'},'Foto QR dari ID card'))),
       h('div',{id:'sRes','aria-live':'polite'})),
     h('div',{class:'bar',style:'margin:14px 0 10px'},
       h('input',{class:'inp',type:'search',id:'sQ',placeholder:'Cari nama atau ID','aria-label':'Cari anggota',value:A.q,oninput:e=>{A.q=e.target.value;paintSesi();}}),
