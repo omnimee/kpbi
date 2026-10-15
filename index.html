@@ -69,6 +69,10 @@ p{margin:0}
 .topin{display:flex;flex-direction:column;gap:6px;padding-top:10px}
 .brand{display:flex;align-items:center;gap:12px}
 .mark{width:40px;height:40px;border-radius:8px;background:var(--gold-bright);color:#4A0A12;display:grid;place-items:center;font-family:var(--font-display);font-size:20px;flex:none}
+.mark.has-logo{background:transparent;overflow:hidden}
+.mark img{width:100%;height:100%;object-fit:contain;display:block}
+.logo-prev{width:88px;height:88px;border-radius:10px;border:1px dashed var(--line,#C9B8B4);display:grid;place-items:center;background:#7A0F1B;overflow:hidden;flex:none}
+.logo-prev img{width:100%;height:100%;object-fit:contain}
 .bname{font-family:var(--font-display);font-size:22px;color:#F0D084;display:block;line-height:1.1}
 .bsub{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.72)}
 nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin-inline:-6px}
@@ -192,7 +196,7 @@ details.card>summary{cursor:pointer;font-weight:600;min-height:28px}
 <body>
 <header class="top">
   <div class="wrap topin">
-    <div class="brand"><span class="mark" aria-hidden="true">KB</span><div><b class="bname" id="brandName">KPBI Barongsay</b><span class="bsub">Keanggotaan</span></div></div>
+    <div class="brand"><span class="mark" id="brandMark" aria-hidden="true">KB</span><div><b class="bname" id="brandName">KPBI Barongsay</b><span class="bsub" id="brandSub" hidden></span></div></div>
     <nav id="tabs" role="tablist" aria-label="Menu"></nav>
   </div>
 </header>
@@ -214,7 +218,8 @@ details.card>summary{cursor:pointer;font-weight:600;min-height:28px}
         <label class="field"><span>Tempat lahir</span><input id="fTempat" class="inp" maxlength="50" placeholder="Kota kelahiran"></label>
         <label class="field"><span>Tanggal lahir <b id="fUmur" class="sm"></b></span><input id="fLahir" class="inp" type="date"></label>
         <label class="field"><span>Nomor WhatsApp <b class="sm">(boleh dikosongkan)</b></span><input id="fPhone" class="inp" type="tel" inputmode="tel" autocomplete="tel" placeholder="0812-3456-7890" maxlength="20"></label>
-        <label class="field"><span>Posisi yang diminati</span><select id="fRole" class="inp"></select></label>
+        <label class="field"><span>Jabatan</span><select id="fJab" class="inp"></select></label>
+        <label class="field"><span>Bagian (bila ikut bermain)</span><select id="fRole" class="inp"></select></label>
         <label class="check"><input id="fMinor" type="checkbox"><span>Saya berusia di bawah 18 tahun</span></label>
         <label class="field" id="guardWrap" hidden><span>Nama orang tua / wali</span><input id="fGuardian" class="inp" maxlength="80"></label>
         <label class="check"><input id="fConsent" type="checkbox"><span>Saya setuju foto dan data ini disimpan pengurus untuk keperluan keanggotaan.</span></label>
@@ -256,6 +261,7 @@ details.card>summary{cursor:pointer;font-weight:600;min-height:28px}
   <section id="v-absensi" hidden></section>
   <section id="v-jadwal" hidden></section>
   <section id="v-cetak" hidden></section>
+  <section id="v-pengaturan" hidden></section>
 </main>
 
 <div id="sheet" class="sheet" hidden></div>
@@ -302,8 +308,18 @@ const ICONS={
 
 
 /* ---------- state & server ---------- */
-const cfg={team:'KPBI Barongsay'};
-const JABATAN=['Pemain/Anggota','Penasehat','Pelatih','Ketua'];
+const cfg={team:'KPBI Barongsay',alamat:'',logo:''};
+function applyBrand(c){
+  if(!c)return;
+  if(c.team)cfg.team=c.team;
+  cfg.alamat=c.alamat||'';cfg.logo=c.logo||'';
+  $('#brandName').textContent=cfg.team;document.title=cfg.team;
+  const sub=$('#brandSub');sub.textContent=cfg.alamat;sub.hidden=!cfg.alamat;
+  const mk=$('#brandMark');
+  if(cfg.logo){mk.classList.add('has-logo');mk.replaceChildren(h('img',{src:cfg.logo,alt:''}));}
+  else{mk.classList.remove('has-logo');mk.textContent=cfg.team.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'KB';}
+}
+const JABATAN=['Pemain/Anggota','Penasehat','Pelatih','Ketua','Wakil','Korlap','Humas'];
 const jabOf=m=>m.jabatan||JABATAN[0];
 const jabBeda=m=>jabOf(m)!==JABATAN[0];
 let token='',isAdmin=false,tab='daftar',selfie='',adminBuilt=false;
@@ -363,7 +379,7 @@ const TABS=[
   {id:'daftar',label:'Daftar',show:()=>true},{id:'cek',label:'Cek status',show:()=>true},
   {id:'masuk',label:'Pengurus',show:()=>!isAdmin},
   {id:'setuju',label:'Persetujuan',show:()=>isAdmin},{id:'anggota',label:'Anggota',show:()=>isAdmin},
-  {id:'absensi',label:'Absensi',show:()=>isAdmin},{id:'jadwal',label:'Jadwal',show:()=>isAdmin},{id:'cetak',label:'Cetak',show:()=>isAdmin}
+  {id:'absensi',label:'Absensi',show:()=>isAdmin},{id:'jadwal',label:'Jadwal',show:()=>isAdmin},{id:'cetak',label:'Cetak',show:()=>isAdmin},{id:'pengaturan',label:'Pengaturan',show:()=>isAdmin}
 ];
 function renderTabs(){
   const n=pending().length;
@@ -383,6 +399,7 @@ function renderView(){
   else if(tab==='absensi'){if(A.cur&&$('#sList'))paintSesi();else renderAbsensi();}
   else if(tab==='jadwal'){if(J.cur&&$('#jPeserta'))paintJadwal();else renderJadwal();}
   else if(tab==='cetak')renderCetak();
+  else if(tab==='pengaturan')renderPengaturan();
 }
 function refreshAll(){renderTabs();renderView();}
 
@@ -395,6 +412,8 @@ function umurDari(s){
 }
 const ttl=m=>[m.tempat,m.lahir?fmtDate(m.lahir):''].filter(Boolean).join(', ')+(m.lahir&&m.umur!==''&&m.umur!=null?' ('+m.umur+' th)':'');
 function fillRoles(){
+  const sel=$('#fJab').value;
+  $('#fJab').replaceChildren(...JABATAN.map(r=>h('option',{value:r},r)));if(JABATAN.includes(sel))$('#fJab').value=sel;
   $('#fRole').replaceChildren(...[...ROLES,UNSURE].map(r=>h('option',{value:r},r===UNSURE?'Belum tahu, ikut dulu':r)));
 }
 async function selfieFrom(file){
@@ -434,7 +453,7 @@ function initDaftar(){
     if(!$('#fConsent').checked)return fail('Centang persetujuan penyimpanan data.');
     const btn=$('#regGo');btn.disabled=true;btn.textContent='Mengirim…';
     try{
-      const r=await api('registerMember',{nama:name,panggilan:nick,tempat:tempat,lahir:lahir,wa:phone,posisi:role,wali:minor?guardian:'',foto:selfie});
+      const r=await api('registerMember',{nama:name,panggilan:nick,tempat:tempat,lahir:lahir,wa:phone,posisi:role,jabatan:$('#fJab').value,wali:minor?guardian:'',foto:selfie});
       $('#doneCode').textContent=r.kode;
       $('#formWrap').style.display='none';
       const d=$('#doneWrap');d.hidden=false;d.style.display='flex';
@@ -552,7 +571,7 @@ async function showVerdict(code){
   box.replaceChildren(h('div',{class:'verdict '+s.cls},
     h('span',{class:'vicon',html:ICONS[s.cls]}),
     h('div',{class:'vlabel'},s.label.toUpperCase()),
-    h('div',{class:'vwho'},avatar(m,76),h('div',null,h('b',{class:'vname'},m.name),h('span',{class:'mono sm'},m._id),h('span',{class:'sm'},(jabBeda(m)?m.jabatan+' · ':'')+m.role+(m.joined?' · sejak '+fmtDate(m.joined):'')))),
+    h('div',{class:'vwho'},avatar(m,76),h('div',null,h('b',{class:'vname'},m.name),h('span',{class:'mono sm'},m._id),h('span',{class:'sm'},jabOf(m)+(m.joined?' · sejak '+fmtDate(m.joined):'')))),
     h('p',{class:'vdesc'},s.desc),
     isAdmin&&S.members.some(x=>x._id===m._id)?h('button',{class:'btn sm ghost',type:'button',onclick:()=>openDetail(m._id)},'Buka detail'):null));
   box.scrollIntoView({block:'nearest',behavior:'smooth'});
@@ -616,6 +635,7 @@ function logout(){
   token='';isAdmin=false;S.members=[];S.regs=[];
   A.cur=null;A.sesi=[];A.hadir={};A.rekap=null;A.bulan=null;A.pdf=null;A.res=null;A.view='sesi';
   J.cur=null;J.list=[];J.peserta={};J.edit=null;
+  delete $('#v-pengaturan').dataset.built;
   Object.keys(PH).forEach(k=>delete PH[k]);
   closeSheet();
   go('daftar');
@@ -662,7 +682,7 @@ function renderSetuju(){
       return h('div',{class:'card'},
         h('div',{style:'display:flex;gap:14px;align-items:center'},avatar(r,72),
           h('div',{style:'min-width:0'},h('b',{style:'font-size:17px;overflow-wrap:anywhere'},r.name),
-            h('div',{class:'meta'},r.nick?h('span',null,'“'+r.nick+'”'):null,h('span',null,r.role),r.phone?h('span',{class:'mono'},r.phone):h('span',null,'Tanpa nomor'),r.lahir?h('span',null,ttl(r)):null,h('span',null,'Mendaftar '+fmtWhen(r.createdAt)),r.guardian?h('span',null,'Wali: '+r.guardian):null))),
+            h('div',{class:'meta'},r.nick?h('span',null,'“'+r.nick+'”'):null,h('span',{style:'font-weight:700'},jabOf(r)),h('span',null,r.role),r.phone?h('span',{class:'mono'},r.phone):h('span',null,'Tanpa nomor'),r.lahir?h('span',null,ttl(r)):null,h('span',null,'Mendaftar '+fmtWhen(r.createdAt)),r.guardian?h('span',null,'Wali: '+r.guardian):null))),
         open?h('div',{style:'display:flex;flex-direction:column;gap:8px;margin-top:12px'},
           h('input',{class:'inp',id:'rj-'+r._id,placeholder:'Alasan penolakan (opsional)',maxlength:'140',value:drafts[r._id]||'',oninput:e=>{drafts[r._id]=e.target.value;}}),
           h('div',{class:'acts',style:'margin-top:0'},h('button',{class:'btn out-bad sm',type:'button',onclick:e=>reject(r,e.currentTarget)},'Kirim penolakan'),h('button',{class:'btn ghost sm',type:'button',onclick:()=>{rejecting.delete(r._id);renderSetuju();}},'Batal')))
@@ -731,10 +751,11 @@ async function drawCard(m){
   const g=x.createLinearGradient(0,0,W,H);g.addColorStop(0,'#6E0C19');g.addColorStop(1,'#A51A2C');
   x.fillStyle=g;x.fillRect(0,0,W,H);
   x.strokeStyle='#E9C46A';x.lineWidth=6;x.strokeRect(20,20,W-40,H-40);x.lineWidth=2;x.strokeRect(34,34,W-68,H-68);
-  x.textBaseline='alphabetic';x.fillStyle='#F0D084';x.font='400 52px "Rozha One",Georgia,serif';x.fillText(fit(x,(cfg.team||'KPBI Barongsay').toUpperCase(),879,52,30,'400','"Rozha One",Georgia,serif'),66,116);
+  x.textBaseline='alphabetic';x.fillStyle='#F0D084';x.font='400 52px "Rozha One",Georgia,serif';x.fillText(fit(x,(cfg.team||'KPBI Barongsay').toUpperCase(),cfg.logo?740:879,52,30,'400','"Rozha One",Georgia,serif'),66,116);
   x.fillStyle='rgba(255,255,255,.8)';x.font='500 22px '+BODY;try{x.letterSpacing='5px';}catch(e){}
   x.fillText('KARTU ANGGOTA',68,152);try{x.letterSpacing='0px';}catch(e){}
   x.fillStyle='#E9C46A';x.fillRect(66,170,879,3);
+  if(cfg.logo){try{const lg=await loadImg(cfg.logo),k=Math.min(104/lg.width,104/lg.height),lw=lg.width*k,lh=lg.height*k;x.drawImage(lg,841+(104-lw)/2,52+(104-lh)/2,lw,lh);}catch(e){}}
   // photo
   const px=66,py=198,ps=290;
   x.save();rr(x,px,py,ps,ps,22);x.clip();
@@ -744,8 +765,7 @@ async function drawCard(m){
   // text
   const tx=406,tw=318;
   x.fillStyle='#FFFFFF';const nm=fit(x,m.name,tw,40,24,'700',BODY);x.fillText(nm,tx,246);
-  x.fillStyle='#F0D084';x.font='600 28px '+BODY;x.fillText(fit(x,m.role,tw,28,20,'600',BODY),tx,292);
-  if(m.jabatan&&m.jabatan!=='Pemain/Anggota'){x.fillStyle='#FFFFFF';x.font='700 26px '+BODY;try{x.letterSpacing='3px';}catch(e){}x.fillText(fit(x,m.jabatan.toUpperCase(),tw,26,18,'700',BODY),tx,334);try{x.letterSpacing='0px';}catch(e){}}
+  x.fillStyle='#F0D084';x.font='600 28px '+BODY;x.fillText(fit(x,jabOf(m),tw,28,20,'600',BODY),tx,292);
   x.fillStyle='rgba(255,255,255,.7)';x.font='500 18px '+BODY;try{x.letterSpacing='4px';}catch(e){}
   x.fillText('ID ANGGOTA',tx,372);try{x.letterSpacing='0px';}catch(e){}
   x.fillStyle='#FFFFFF';x.font='600 46px '+MONO;x.fillText(m._id,tx,424);
@@ -847,6 +867,57 @@ const P={st:{aktif:true,hijau:true,merah:true},role:'',jab:'',photo:false,sort:'
 function printList(){
   const l=S.members.filter(m=>P.st[m.status]&&(!P.role||m.role===P.role)&&(!P.jab||jabOf(m)===P.jab));
   return l.sort((a,b)=>P.sort==='nama'?a.name.localeCompare(b.name,'id'):a._id.localeCompare(b._id));
+}
+/* ---------- pengaturan ---------- */
+async function logoFrom(file){
+  const img=await loadImg(await readFile(file));
+  for(const side of [256,192,128,96]){
+    const k=Math.min(1,side/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*k)),hh=Math.max(1,Math.round(img.height*k));
+    const c=document.createElement('canvas');c.width=w;c.height=hh;c.getContext('2d').drawImage(img,0,0,w,hh);
+    const u=c.toDataURL('image/png');if(u.length<=44000)return u;
+    const j=document.createElement('canvas');j.width=w;j.height=hh;const x=j.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,hh);x.drawImage(img,0,0,w,hh);
+    const v=j.toDataURL('image/jpeg',0.85);if(v.length<=44000)return v;
+  }
+  throw new Error('Logo terlalu rumit. Pakai gambar yang lebih sederhana.');
+}
+const PG={logo:null};
+function renderPengaturan(){
+  const root=$('#v-pengaturan');
+  if(root.dataset.built&&!root.dataset.dirty)return;
+  PG.logo=cfg.logo||'';
+  const fN=h('input',{class:'inp',id:'pgNama',value:cfg.team,maxlength:'60','aria-label':'Nama tim'});
+  const fA=h('input',{class:'inp',id:'pgAlamat',value:cfg.alamat,maxlength:'120',placeholder:'Contoh: Jl. Merdeka No. 10, Medan','aria-label':'Alamat'});
+  const prev=h('div',{class:'logo-prev',id:'pgPrev'});
+  const paint=()=>{prev.replaceChildren(PG.logo?h('img',{src:PG.logo,alt:'Logo'}):h('span',{class:'sm',style:'color:#fff'},'Belum ada'));};
+  paint();
+  const file=h('input',{class:'sr',type:'file',id:'pgFile',accept:'image/*',onchange:async e=>{
+    const f=e.target.files&&e.target.files[0];if(!f)return;
+    try{PG.logo=await logoFrom(f);paint();}catch(x){toast(errMsg(x));}
+    e.target.value='';
+  }});
+  const save=h('button',{class:'btn',type:'button',id:'pgSave',onclick:async()=>{
+    save.disabled=true;
+    try{
+      const c=await adm('simpanPengaturan',{nama:fN.value.trim(),alamat:fA.value.trim(),logo:PG.logo||''});
+      applyBrand(c);
+  if(c&&c.jabatan&&c.jabatan.length){JABATAN.splice(0,JABATAN.length,...c.jabatan);fillRoles();}toast('Pengaturan disimpan');
+    }catch(x){toast(errMsg(x));}
+    finally{save.disabled=false;}
+  }},'Simpan pengaturan');
+  root.replaceChildren(
+    h('h1',null,'Pengaturan'),
+    h('p',{class:'lead',style:'margin-bottom:14px'},'Nama, logo, dan alamat tampil di bagian atas halaman, ID card, dan PDF.'),
+    h('div',{class:'card',style:'display:flex;flex-direction:column;gap:14px;max-width:520px'},
+      h('label',{class:'field'},h('span',null,'Nama tim'),fN),
+      h('label',{class:'field'},h('span',null,'Alamat (tampil di bawah nama)'),fA),
+      h('div',null,h('h2',null,'Logo'),
+        h('div',{style:'display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px'},prev,
+          h('div',{style:'display:flex;flex-direction:column;gap:8px'},
+            h('label',{class:'btn ghost sm',for:'pgFile'},'Pilih gambar logo'),file,
+            h('button',{class:'btn ghost sm',type:'button',id:'pgDel',onclick:()=>{PG.logo='';paint();}},'Hapus logo')),
+        h('p',{class:'help',style:'flex-basis:100%'},'Gambar persegi atau berlatar transparan (PNG) paling bagus. Ukurannya dikecilkan otomatis.'))),
+      save));
+  root.dataset.built='1';
 }
 function buildCetak(){
   $('#v-cetak').append(
@@ -1321,7 +1392,8 @@ async function copyGroup(){
 /* ---------- start ---------- */
 initDaftar();initCek();initCekScan();initMasuk();renderTabs();
 api('publicConfig').then(c=>{
-  if(c&&c.team){cfg.team=c.team;$('#brandName').textContent=c.team;document.title=c.team;}
+  applyBrand(c);
+  if(c&&c.jabatan&&c.jabatan.length){JABATAN.splice(0,JABATAN.length,...c.jabatan);fillRoles();}
   if(c&&c.roles&&c.roles.length){ROLES.splice(0,ROLES.length,...c.roles);fillRoles();}
 }).catch(e=>{
   $('#banner').replaceChildren(h('div',{class:'strip'},h('span',null,errMsg(e))));
