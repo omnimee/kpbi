@@ -328,7 +328,7 @@ const PH={};
 
 /* Isi dengan link web app Apps Script (berakhiran /exec) bila halaman ini dipasang di GitHub Pages.
    Bila halaman dibuka dari Apps Script sendiri, biarkan kosong. */
-const API_URL=window.KPBI_API||'PASTE_LINK_EXEC_DI_SINI';
+const API_URL=window.KPBI_API||'https://script.google.com/macros/s/AKfycbwN5kw_UEWHKRHsfcjLxe-QkcjXetKlZVzA1oQk9fzYgNbstO3FyDJ1ONthcZKTxFHR/exec';
 function apiFetch(fn,args){
   if(!API_URL||/^PASTE/.test(API_URL))return Promise.reject(new Error('Link Apps Script (API_URL) belum diisi di index.html.'));
   return fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn:fn,args:args}),redirect:'follow'})
